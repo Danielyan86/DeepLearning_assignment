@@ -1,6 +1,7 @@
-tensorflow>=2.12.0
+--find-links https://download.pytorch.org/whl/torch_stable.html
 torch>=2.0.0
 torchvision>=0.15.0
+tensorflow-macos>=2.12.0  # M1 specific version
 numpy>=1.24.0
 pandas>=2.0.0
 scikit-learn>=1.2.0

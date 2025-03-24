@@ -8,6 +8,7 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
+import platform
 
 
 class RiceDiseaseDataset(Dataset):
@@ -79,14 +80,28 @@ def get_data_loaders(root_dir, transform, batch_size=32):
     Returns:
         tuple: (train_loader, val_loader)
     """
+    # Optimize num_workers based on system
+    if platform.system() == "Darwin":  # macOS
+        num_workers = 0  # M1 chip works better with 0 workers
+    else:
+        num_workers = 4
+
     train_dataset = RiceDiseaseDataset(root_dir, transform=transform, is_train=True)
     val_dataset = RiceDiseaseDataset(root_dir, transform=transform, is_train=False)
 
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=4
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=4
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
     )
 
     return train_loader, val_loader
