@@ -11,6 +11,8 @@ from tqdm import tqdm
 import argparse
 from pathlib import Path
 import sys
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
+import time
 
 # Add the project root directory to Python path
 sys.path.append(
@@ -34,8 +36,35 @@ def get_device():
         return torch.device("cpu")
 
 
+class EarlyStopping:
+    def __init__(self, patience=7, min_delta=0.001):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+
+
 def train_model(
-    model, train_loader, val_loader, criterion, optimizer, num_epochs, save_dir
+    model,
+    train_loader,
+    val_loader,
+    criterion,
+    optimizer,
+    scheduler,
+    num_epochs,
+    save_dir,
 ):
     """
     Train the model.
@@ -46,6 +75,7 @@ def train_model(
         val_loader: Validation data loader
         criterion: Loss function
         optimizer: Optimizer
+        scheduler: Learning rate scheduler
         num_epochs: Number of epochs to train
         save_dir: Directory to save results
     """
@@ -58,8 +88,15 @@ def train_model(
     train_losses, val_losses = [], []
     train_accs, val_accs = [], []
     best_val_acc = 0
+    best_epoch = 0
 
+    # 添加早停
+    early_stopping = EarlyStopping(patience=7, min_delta=0.001)
+
+    # Training loop
     for epoch in range(num_epochs):
+        epoch_start_time = time.time()
+
         # Train epoch
         model.train()
         total_loss = 0
@@ -112,20 +149,44 @@ def train_model(
         val_loss = total_loss / len(val_loader)
         val_acc = 100.0 * correct / total
 
+        # 检查是否需要早停
+        early_stopping(val_loss)
+        if early_stopping.early_stop:
+            print(f"\nEarly stopping triggered at epoch {epoch+1}")
+            break
+
+        # Update learning rate
+        if isinstance(scheduler, ReduceLROnPlateau):
+            scheduler.step(val_loss)
+        else:
+            scheduler.step()
+
         # Save metrics
         train_losses.append(train_loss)
         val_losses.append(val_loss)
         train_accs.append(train_acc)
         val_accs.append(val_acc)
 
-        print(f"Epoch {epoch+1}/{num_epochs}:")
+        epoch_time = time.time() - epoch_start_time
+        print(f"Epoch {epoch+1}/{num_epochs} ({epoch_time:.2f}s):")
         print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
         print(f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+        print(f"Learning Rate: {optimizer.param_groups[0]['lr']:.6f}")
 
         # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), os.path.join(save_dir, "best_model.pth"))
+            best_epoch = epoch
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "best_val_acc": best_val_acc,
+                },
+                os.path.join(save_dir, "best_model.pth"),
+            )
 
         # Plot learning curves
         Visualizer.plot_learning_curves(
@@ -136,6 +197,8 @@ def train_model(
             save_path=os.path.join(save_dir, "learning_curves.png"),
         )
 
+    print(f"\nBest validation accuracy: {best_val_acc:.2f}% at epoch {best_epoch+1}")
+
 
 def main():
     # Parse arguments
@@ -145,6 +208,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--weight_decay", type=float, default=0.0001)
     args = parser.parse_args()
 
     # Create save directory
@@ -162,7 +226,17 @@ def main():
 
     # Setup training
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.AdamW(
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
+
+    # Learning rate scheduler
+    scheduler = CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=10,  # Number of epochs for the first restart
+        T_mult=2,  # Factor to increase T_0 after a restart
+        eta_min=1e-6,  # Minimum learning rate
+    )
 
     # Train model
     train_model(
@@ -171,6 +245,7 @@ def main():
         val_loader,
         criterion,
         optimizer,
+        scheduler,
         args.num_epochs,
         args.save_dir,
     )

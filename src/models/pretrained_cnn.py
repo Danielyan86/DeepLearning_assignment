@@ -27,10 +27,15 @@ class PretrainedCNN(BaseModel):
             for param in self.model.parameters():
                 param.requires_grad = False
 
-        # Replace the final fully connected layer
+        # Replace the final fully connected layer with a more sophisticated classifier
         num_features = self.model.fc.in_features
         self.model.fc = nn.Sequential(
-            nn.Dropout(0.5), nn.Linear(num_features, num_classes)
+            nn.Dropout(0.5),
+            nn.Linear(num_features, 512),
+            nn.ReLU(),
+            nn.BatchNorm1d(512),
+            nn.Dropout(0.3),
+            nn.Linear(512, num_classes),
         )
 
     def forward(self, x):
@@ -50,11 +55,14 @@ class PretrainedCNN(BaseModel):
         if train:
             return transforms.Compose(
                 [
-                    transforms.RandomResizedCrop(224),
+                    transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
                     transforms.RandomHorizontalFlip(),
                     transforms.RandomVerticalFlip(),
                     transforms.RandomRotation(15),
-                    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+                    transforms.ColorJitter(
+                        brightness=0.2, contrast=0.2, saturation=0.2
+                    ),
+                    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
                     transforms.ToTensor(),
                     transforms.Normalize(
                         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]

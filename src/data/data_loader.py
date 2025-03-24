@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 import platform
+from functools import lru_cache
 
 
 class RiceDiseaseDataset(Dataset):
@@ -57,6 +58,7 @@ class RiceDiseaseDataset(Dataset):
     def __len__(self):
         return len(self.images)
 
+    @lru_cache(maxsize=1000)  # Cache the last 1000 images
     def __getitem__(self, idx):
         img_path = self.images[idx]
         image = Image.open(img_path).convert("RGB")
@@ -95,6 +97,8 @@ def get_data_loaders(root_dir, transform, batch_size=32):
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=2 if num_workers > 0 else None,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -102,6 +106,8 @@ def get_data_loaders(root_dir, transform, batch_size=32):
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=2 if num_workers > 0 else None,
     )
 
     return train_loader, val_loader
