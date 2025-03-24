@@ -175,3 +175,9 @@ cython_debug/
 rice leaf diseases dataset/
 rice-plant-diseases-dataset.zip
 .DS_Store
+*.pth
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp

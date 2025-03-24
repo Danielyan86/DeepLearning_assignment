@@ -19,8 +19,8 @@ class PretrainedCNN(BaseModel):
         """
         super().__init__(num_classes)
 
-        # Load pre-trained ResNet50
-        self.model = models.resnet50(pretrained=True)
+        # Load pre-trained ResNet50 with updated API
+        self.model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
 
         # Freeze backbone if specified
         if freeze_backbone:
